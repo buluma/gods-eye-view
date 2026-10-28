@@ -1144,6 +1144,10 @@ Shot selection updates the highlight without replacing the row, preserving
 native double-click rename. Replacing rows revokes their old listeners. Disposal stops controls immediately;
 late file and failed-action completions cannot update removed presentation.
 
+Director clock listeners, interaction observers and scene release failures no
+longer leave the director inconsistent, and a phase error is kept when cleanup
+also fails.
+
 ## Cockpit component ownership
 
 Cockpit presentation is separated from its camera/controller behavior. Existing
@@ -3733,7 +3737,7 @@ test:track` 43 tracking invariants · headless QA harnesses under
 
 ### Interface localization (October 2026)
 
-Shipped locales: **en** (source and fallback), **es**, **ru** and **zh-CN**. The code lives in
+Shipped locales: **en** (source and fallback), **es**, **ru**, **zh-CN** and **zh-Hant**. The code lives in
 `src/i18n/`. How to mark UI text: [`docs/I18N.md`](./I18N.md); translator workflow:
 [`docs/TRANSLATORS.md`](./TRANSLATORS.md).
 
@@ -3744,8 +3748,8 @@ Shipped locales: **en** (source and fallback), **es**, **ru** and **zh-CN**. The
   value). English has no catalog; every other locale is
   `src/i18n/locales/<code>.json`, and a missing entry falls back to English.
 - **Locale choice.** `?lang=` → stored choice (`gev:locale:v1`) →
-  `navigator.languages` → English. Chinese tags map to `zh-CN`; tags containing
-  `Hant`, `TW`, `HK` or `MO` are skipped. `?lang=` is not stored, and share links drop
+  `navigator.languages` → English. Chinese tags default to `zh-CN`; Traditional Chinese tags
+  select `zh-Hant`. Explicit `Hans` selects `zh-CN` regardless of region. `?lang=` is not stored, and share links drop
   it, so a recipient keeps their own language. The globe picker in the
   bottom-right corner (`src/ui/localePicker.js`) stores the choice, drops
   `?lang=` (keeps it only when storage is blocked) and reloads. It asks first
@@ -3906,6 +3910,8 @@ reports it (`keyAlternatives`), and the panel's KEY REQUIRED, its coverage
 line and the layer row's tooltip say to light it. The
 viewer sits under the header with EXPAND, FIT/FILL and close above the
 image. SINCE is a stepped slider whose readout names the cut-off date.
+The viewer caption's bearing wraps after rounding to whole degrees, so a view
+facing 359.5° or more reads `0°` rather than `360°`.
 
 MapillaryJS loads on the first photo. Opening one frames it with a single
 camera flight through the application's deferred navigation (`begin` /
