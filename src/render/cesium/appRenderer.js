@@ -30,7 +30,6 @@ import { bindRenderer } from '../rendererOf.js';
 import { FREE_LOOK_MAX_HEIGHT_METERS } from '../../globeInView.js';
 import { createCesiumInput } from './input.js';
 import { cesiumCapabilities, createCesiumPorts } from './ports.js';
-import { IDLE_FRAME_RATE } from '../../renderGovernor.js';
 import { cesiumMapEngine } from './mapEngine.js';
 import { installFreeLookHeightLimit } from './freeLookLimit.js';
 import { trimStaleSceneCommands } from './sceneCommandRelease.js';
@@ -38,6 +37,7 @@ import { configureCreditKeyboardAccess } from './creditKeyboard.js';
 import { onLocaleChange } from '../../i18n/index.js';
 import { cesiumViewerOf, recordViewer } from './viewers.js';
 import { installRenderFailureNotice } from './renderFailure.js';
+import { cesiumCardPreviews } from './cardPreviews.js';
 
 export { cesiumViewerOf };
 
@@ -128,8 +128,6 @@ export function createCesiumRendererPlugin({
         capabilities = new ReadonlySet(cesiumCapabilities(viewer.scene));
         ports = createCesiumPorts(viewer, {
           capabilities,
-          // Ticking at the display's rate only while anything moves.
-          idleFps: IDLE_FRAME_RATE,
           credentials: { googleApiKey, googleTokens, worldDataToken },
           ...(cameraController ? { cameraController } : {}),
           ...(clock ? { now, date: () => clock.date() } : {}),
@@ -229,6 +227,9 @@ export function createCesiumRendererPlugin({
         // (renderFailure.js).
         renderFailureNotice: (options) =>
           installRenderFailureNotice(viewer, options),
+        // The Context card's previews, each in a small scene of its own
+        // (cardPreviews.js).
+        cardPreviews: cesiumCardPreviews,
       };
     },
   });
