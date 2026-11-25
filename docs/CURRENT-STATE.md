@@ -969,8 +969,11 @@ within the radius the panel sets (25 to 2,500 km). Aircraft, satellites and
 vessels are followed as they are picked; the card says Following only while
 the camera follows the card's own item, and closing the card lets go.
 Aircraft and satellites offer Enter Cockpit and Enter orbital view; transit
-vehicles show their motion and fleet. A camera's card shows its latest frame
-from the CCTV panel.
+vehicles show their motion and fleet. A camera's card shows its latest still
+when available, while live video plays in the CCTV panel. Clicking the
+projected image, a view ray or the far-plane outline opens that camera's card.
+A loaded camera's name and position are also available when the card opens
+from its icon.
 
 With nothing picked, the panel describes the view
 (`src/ui/views/panels/ViewContext.vue`): the place under the middle of the
@@ -2105,7 +2108,8 @@ camera that is already active counts. The picker shows the automatic camera
 as its own option, and a native list sends no change for the option it
 already shows, so the list cannot pick that camera: FOCUS does, and so does
 NEAREST when that camera is the nearest. Closing the list without a choice
-keeps automatic selection.
+keeps automatic selection. Turning CCTV on leaves the globe in place, even if
+the active camera is cleared before enabling finishes.
 
 The active camera's pictures follow what can be seen. The monitor plane skips
 its 10 s still while the renderer reports it off screen or below the horizon,
@@ -5325,6 +5329,24 @@ down | auth-failed` (plus the unchanged `missing-key`/`unsupported`) with
 >   clock goes live and the camera flies to the view the app started from (the
 >   host's `homeView`, else its `startView`, else the whole planet), letting go
 >   of whatever it follows as Reset Globe does (`returnToStart()`).
+>   On a bare address, the standalone app starts 23,000 km above the country of
+>   the browser's time zone, looking straight down. It falls back to a preferred
+>   language's region, then to the default start view. The lookup runs in the
+>   browser (`src/homeCountry.js` and `src/data/homeCountries.js`).
+>   Once the startup restore settles and at least one second has passed, the
+>   loading text fades and the logo glides to the centre. The eye grows past the
+>   screen edges as the drawn planet in its pupil gives way to the globe. The
+>   globe grows to whole-planet size and turns once west to east, stopping over
+>   the destination. For a closer or angled view, the camera then approaches or
+>   turns to match it (`src/app/openingIntro.js`).
+>   A bare address or a link that restores only a view plays the opening.
+>   Links that follow or select something or open Street Level photos skip it,
+>   as do failed, refused or superseded restores, a newer navigation, Stories
+>   links, embedded views, reduced motion and `?intro=0`.
+>   A press, click, key, touch or wheel event lands the opening immediately.
+>   Another camera move stops the opening where the camera stands. During the
+>   flight the address keeps the destination and globe-in-view recovery waits.
+>   Welcome appears once the opening ends and the loading cover has faded.
 > - **Context, Cockpit, and Radio interaction contract:** explicit Contacts and
 >   Radio actions and successful Cockpit actions can reveal Context. Contacts
 >   uses the dedicated right-side chooser. Space Missions has its own rail
@@ -6425,9 +6447,9 @@ by `scripts/qa-emergency-squawk.mjs`. Both accept `--timeout-ms` for slow boot.
 
 Fire Perimeters uses capped, timed server reads with stale-on-error caching and a per-client limit. A stale snapshot is served for at most 24 hours; the layer row then reads STALE, dated by that snapshot's fetch, and `get_fire_perimeters` returns `stale` and `retrieved_at` with "(data may be stale)" in its summary. Link checks cancel on disable or selection change.
 
-Fire Perimeters draws the fires and burned-area pieces of its source's snapshot. The `getSnapshot` contract is documented in the JSDoc of `createFirePerimetersLayer` (`src/layers/perimeters/index.js`). Pieces are coloured by age at `at` (or now). Areas under 6 hours old are yellow, 6–24 hours orange, and 1–3 days red. Older areas, areas of unknown age and areas dated after `at` are dark red. The layer redraws when `revision` changes or a piece moves to another age band. A snapshot without a string `revision` is redrawn on every read. The legend counts fires by `lastGrowthTime` at the moment of the last successful read, matching the map, and shows the source's `note`. A failed read keeps the last picture and the row shows the error. For a snapshot with a past `at`, a card can link only to an InciWeb incident that began by that time. Of several same-name incidents in the fire's state, it links the one that began nearest the fire's discovery. If none of them began by then, or the ones that did failed to load, it links the fire's complex page by the same rule. A page that fails to load is skipped until the fire is selected again or a read finds its card without a link. `analyst_query` counts `ageHours` from `at` too and treats times after `at` as unknown.
+Fire Perimeters draws the fires and burned-area pieces of its source's snapshot. The `getSnapshot` contract is documented in the JSDoc of `createFirePerimetersLayer` (`src/layers/perimeters/index.js`). Pieces are coloured by age at `at` (or now). Areas under 6 hours old are yellow, 6–24 hours orange, and 1–3 days red. Older areas, areas of unknown age and areas dated after `at` are dark red. When every piece has its own `id`, each read compares the pieces by id and changes only those added, removed or moved to another age band. A moved piece is recoloured in the draw sets it is in. A new piece goes where the snapshot's order puts it. After every drawn piece, it goes into the newest set, and a new set starts once the newest holds 8,000 fills or 2,000 lines. Ahead of a drawn piece, it goes into that piece's set, which is then written whole. A snapshot with a piece without an `id`, or with an id repeated within a fire or containing a lone UTF-16 surrogate, is drawn whole. It is redrawn when `revision` changes or a piece moves to another age band, and on every read without a string `revision`. `scripts/qa-perimeters-perf.mjs` times an hourly step of a synthetic peak day (1,000 pieces, 0.8 million vertices) on Cesium. The legend counts fires by `lastGrowthTime` at the moment of the last successful read, matching the map, and shows the source's `note`. A failed read keeps the last picture and the row shows the error. For a snapshot with a past `at`, a card can link only to an InciWeb incident that began by that time. Of several same-name incidents in the fire's state, it links the one that began nearest the fire's discovery. If none of them began by then, or the ones that did failed to load, it links the fire's complex page by the same rule. A page that fails to load is skipped until the fire is selected again or a read finds its card without a link. `analyst_query` counts `ageHours` from `at` too and treats times after `at` as unknown.
 
-WFIGS keeps one current perimeter per fire, so each of its polygons is one piece. Colour shows the age of the perimeter based on `poly_PolygonDateTime`. When that field is empty (8 of 54 fires on 2026-11-20), the source falls back to `poly_DateCurrent`, which changes with any edit to the record. A time more than 10 minutes ahead of the browser clock counts as unknown, a nearer one as now. The `revision` follows fire ids and `poly_DateCurrent`. For a fire without `poly_DateCurrent`, it follows the mapping time and outline. WFIGS snapshots always have `at: null`.
+WFIGS keeps one current perimeter per fire, so each of its polygons is one piece. Colour shows the age of the perimeter based on `poly_PolygonDateTime`. When that field is empty (8 of 54 fires on 2026-11-20), the source falls back to `poly_DateCurrent`, which changes with any edit to the record. A time more than 10 minutes ahead of the browser clock counts as unknown, a nearer one as now. The `revision` follows fire ids and `poly_DateCurrent`. For a fire without `poly_DateCurrent`, it follows the mapping time and outline. A piece's `id` is that version (else a hash of the mapping time and outline) and the polygon's place in the perimeter. WFIGS snapshots always have `at: null`. The package's `./layers/perimeters/records` export carries `perimeterAnchorDegrees` and the snapshot helpers without rendering code, so a server or worker stands an incident card where the map does.
 
 The incident card rounds the WFIGS size to whole acres, except under one acre,
 where it keeps the reported hundredths: a 0.25-acre fire reads `0.25 ac`, not
@@ -9043,6 +9065,12 @@ apply to `public/` assets or built-preview serving.
   Pixel-mode pinch deltas receive bounded amplification before reaching the
   canvas; ordinary wheel, line/page-mode and native touch-pinch paths are left
   unchanged. The application scene owns and removes the relay listener.
+- On macOS, Command+drag on the globe tilts and rotates the camera as
+  Ctrl+drag does, since Ctrl+click is a right click there; Ctrl+drag still
+  works. Pointer and mouse events with Command held (and Ctrl not) report
+  Ctrl to Cesium's camera controller (`src/render/cesium/commandDrag.js`).
+  Wheel events are never remapped, so Ctrl+wheel stays the trackpad pinch.
+  Other platforms are unchanged.
 - Z ladder: panels around 100, voice pill 150, toast 200, clean-view exit 300.
 - Panel POSITION keys are versioned `v8` (`godsEyeView.v8.panelPos.<id>`); collapsed-state keys remain `v6`. The one-time position reset clears stale DISPLAY placements that could overlap the Context rail.
 - Map Source lives in the bottom Visual Presets tray. The left accordion contains no MAP STACK panel, and the `k` panel token that addressed it is gone from the share registry, so legacy `ui=k...` state takes the ordinary unknown-token skip.
