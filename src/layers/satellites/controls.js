@@ -11,6 +11,10 @@ import {
 import { ISS_NORAD, POINT_STYLES, classPointStyle } from './policy.js';
 import { modelFor, trackedStation } from './stationModels.js';
 
+/** satelliteClassText's options, made once rather than per satellite per paint. */
+const ISS_CLASS_TEXT = Object.freeze({ isIss: true });
+const OTHER_CLASS_TEXT = Object.freeze({ isIss: false });
+
 export function createControls({ state: layerState, services, parts, source }) {
   const { isExplicitLayerStateOrigin } = services.layerState;
 
@@ -50,7 +54,7 @@ export function createControls({ state: layerState, services, parts, source }) {
   /**
    * Show or hide every point by its class. The tracked satellite's point
    * stays hidden (its entity draws the dot), as do points a Cockpit hold hid.
-   * The ISS's ring and label go with its class.
+   * The ISS's label goes with its class.
    */
   function _applyClassVisibility() {
     for (const noradId of layerState._points.keys()) {
@@ -58,31 +62,8 @@ export function createControls({ state: layerState, services, parts, source }) {
       if (layerState._cockpitHiddenPoints?.has(noradId)) continue;
       parts.rendering._setPointShown(noradId, _classVisible(noradId));
     }
-    _syncIssOrbit();
     parts.labels?._syncIssOverlay?.();
     layerState._detectionObjects.clear();
-  }
-
-  /**
-   * Whether the ISS's ring shows: orbits on, the layer drawing, and its
-   * class on or the ISS tracked (a tracked satellite keeps its ring), also
-   * as an object docked to it, which draws no ring of its own.
-   */
-  function _issOrbitVisible() {
-    return (
-      satelliteVisualsVisible(
-        layerState._enabled,
-        layerState._params.showOrbits,
-      ) &&
-      (_classVisible(ISS_NORAD) ||
-        layerState._trackedNorad === ISS_NORAD ||
-        Boolean(layerState._trackedDockedToIss))
-    );
-  }
-
-  /** Show or hide the ISS's ring by _issOrbitVisible, if it is built. */
-  function _syncIssOrbit() {
-    parts.rendering._setOrbitPathShown(ISS_NORAD, _issOrbitVisible());
   }
 
   /**
@@ -109,7 +90,7 @@ export function createControls({ state: layerState, services, parts, source }) {
 
   function _notifyRowControls() {
     try {
-      layerState._rowControlsListener?.();
+      layerState._panel?.invalidate();
     } catch (error) {
       console.warn('[Data:Satellites] row-controls listener failed:', error);
     }
@@ -223,7 +204,12 @@ export function createControls({ state: layerState, services, parts, source }) {
     refreshInterval: 5 * 60 * 1000,
 
     getDetectableObjects(options = {}) {
-      if (!parts.rendering._pointsShown()) return [];
+      // Read on every detection paint: one result array and each satellite's
+      // own object, so a paint allocates nothing here. The result is valid
+      // until the next call.
+      const result = (layerState._detectionResult ??= []);
+      result.length = 0;
+      if (!parts.rendering._pointsShown()) return result;
       // Dense extras are points-only: excluded from the detection overlay.
       const eligibleCount = Math.max(
         1,
@@ -236,7 +222,6 @@ export function createControls({ state: layerState, services, parts, source }) {
       const stride = Math.max(1, Math.ceil(eligibleCount / maxCount));
       const start = seed % stride;
 
-      const result = [];
       let idx = 0;
       for (const noradId of layerState._points.keys()) {
         if (
@@ -277,9 +262,11 @@ export function createControls({ state: layerState, services, parts, source }) {
         // ("GPS-OPS"). The detection canvas composites ABOVE the post-FX
         // chain, so this is how class survives NVG/FLIR once the dot colors
         // are collapsed. Read each time: SATCAT can reclassify a satellite.
-        object.klass = satelliteClassText(cat?.satelliteClass, cat?.group, {
-          isIss: noradId === ISS_NORAD,
-        });
+        object.klass = satelliteClassText(
+          cat?.satelliteClass,
+          cat?.group,
+          noradId === ISS_NORAD ? ISS_CLASS_TEXT : OTHER_CLASS_TEXT,
+        );
         object.position = position;
         object.skipLabel = isTracked;
         result.push(object);
@@ -453,6 +440,35 @@ export function createControls({ state: layerState, services, parts, source }) {
     },
 
     /**
+     * Select a satellite by NORAD id as a click on its dot does: selected
+     * with its orbit and card, centred once, not followed
+     * (src/data/clickSelect.js).
+     * @param {string|number} noradId NORAD catalog number.
+     * @param {{origin?: string, center?: boolean}} [options] `center: false`
+     *   selects it and leaves the camera to the caller (a pick from a list
+     *   frames it).
+     * @returns {boolean} True if the satellite was selected.
+     */
+    pickById(noradId, { origin = 'user', center = true } = {}) {
+      const id = Number(noradId);
+      if (
+        !Number.isFinite(id) ||
+        !layerState._viewer ||
+        !layerState._catalog.has(id) ||
+        !layerState._points.has(id)
+      )
+        return false;
+      parts.tracking._cancelPendingTrackingRestore();
+      if (layerState._trackedNorad === id) {
+        if (center && !parts.tracking._trackedIsFollowed())
+          parts.tracking._centerTracked();
+        return true;
+      }
+      parts.tracking._trackSatellite(id, { origin, follow: false, center });
+      return layerState._trackedNorad === id;
+    },
+
+    /**
      * Track a satellite by NORAD id (camera follow + orbit path + highlight),
      * same path as clicking its point.
      * @param {string|number} noradId NORAD catalog number.
@@ -551,12 +567,15 @@ export function createControls({ state: layerState, services, parts, source }) {
     },
 
     /**
-     * Stop tracking the currently tracked satellite (no-op if none).
+     * Stop tracking the currently tracked satellite (no-op if none). With
+     * `globeView` (a person letting go of it), a camera that was following
+     * it flies to the globe view over its ground point.
+     * @param {{origin?: string, globeView?: boolean}} [options]
      * @returns {boolean} Always true.
      */
-    stopTracking({ origin = 'programmatic' } = {}) {
+    stopTracking({ origin = 'programmatic', globeView = false } = {}) {
       parts.tracking._cancelPendingTrackingRestore();
-      parts.tracking._clearTracking(false, { origin });
+      parts.tracking._clearTracking(false, { origin, globeView });
       return true;
     },
 
@@ -645,12 +664,10 @@ export function createControls({ state: layerState, services, parts, source }) {
         for (const noradId of layerState._orbitPaths.keys())
           parts.rendering._setOrbitPathShown(
             noradId,
-            noradId === ISS_NORAD
-              ? _issOrbitVisible()
-              : satelliteVisualsVisible(
-                  layerState._enabled,
-                  layerState._params.showOrbits,
-                ),
+            satelliteVisualsVisible(
+              layerState._enabled,
+              layerState._params.showOrbits,
+            ),
           );
         parts.labels._syncIssOverlay();
       }
@@ -762,17 +779,6 @@ export function createControls({ state: layerState, services, parts, source }) {
       return { chips, ...classEvidenceNotice() };
     },
 
-    /**
-     * Install the manager's "row controls changed" callback. The dense load is
-     * asynchronous, so completion and failure have to push a re-render — nothing
-     * else would repaint this row before the 5-minute catalog refresh.
-     * @param {(() => void)|null} listener Callback, or null to detach.
-     */
-    setRowControlsListener(listener) {
-      layerState._rowControlsListener =
-        typeof listener === 'function' ? listener : null;
-    },
-
     getStats() {
       const stale = Boolean(layerState._coreStale || layerState._denseStale);
       return {
@@ -801,8 +807,6 @@ export function createControls({ state: layerState, services, parts, source }) {
     _classTally,
     _classVisible,
     _applyClassVisibility,
-    _issOrbitVisible,
-    _syncIssOrbit,
     satelliteVisualsVisible,
     satelliteCatalogModeChanged,
     methods,

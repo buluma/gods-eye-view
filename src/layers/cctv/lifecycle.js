@@ -223,7 +223,8 @@ export function createLifecycle({
      * handling, and performs initial health sync. Coverage entities stay lazy.
      * @param {object} viewer - The viewer.
      */
-    async init(viewer) {
+    async init(viewer, { panel = null } = {}) {
+      layerState._panel = panel;
       layerState._sourceAbort?.abort();
       const sourceAbort = new AbortController();
       layerState._sourceAbort = sourceAbort;
@@ -493,12 +494,6 @@ export function createLifecycle({
      */
     enable() {
       layerState._enabled = true;
-      if (
-        layerState._records.some(
-          (record) => record.camera.cityId === 'warendorf',
-        )
-      )
-        services.credits?.showOsmCredit?.(layerState._viewer, 'cctv');
       layerState._lastUpdate = Date.now();
       // Pick-ownership (H2): camera icons use the camera id directly;
       // coverage polyline entities use `cctv-<cameraId>-<role>` entity ids.
@@ -539,7 +534,6 @@ export function createLifecycle({
 
     /** Disables the layer: hides entities, stops the projection loop and load queue. */
     disable() {
-      services.credits?.hideOsmCredit?.(layerState._viewer, 'cctv');
       layerState._enabled = false;
       unregisterPickOwner('cctv');
       unregisterClickClaim?.('cctv');
@@ -569,7 +563,7 @@ export function createLifecycle({
      * releases what init attached, whichever viewer it is handed.
      */
     destroy() {
-      services.credits?.hideOsmCredit?.(layerState._viewer, 'cctv');
+      layerState._panel = null;
       layerState._sourceAbort?.abort();
       if (typeof document !== 'undefined')
         document.removeEventListener(

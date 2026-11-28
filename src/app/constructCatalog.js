@@ -67,6 +67,8 @@ export const APPLICATION_LAYER_METADATA = Object.freeze([
  * `placement`, a host-supplied placement provider (../data/placementProvider.js),
  * places live aircraft, vessels, transit and trains; without one each layer
  * uses its own motion.
+ * `seaSurface`, a moving sea surface live vessels' models float on
+ * (`seaSurface` in ../data/fleetModelInstances.js), or null for level models.
  * `perimeterOptions: { inciweb: false }` leaves the Fire Perimeters cards
  * without InciWeb links, and the layer never asks InciWeb.
  */
@@ -82,6 +84,7 @@ export function createApplicationCatalog({
   nepalBoundaryResolver,
   streetLevelProviders,
   placement = null,
+  seaSurface = null,
 }) {
   if (!signal?.addEventListener)
     throw new TypeError('An application lifetime signal is required');
@@ -122,6 +125,7 @@ export function createApplicationCatalog({
       options: vesselOptions,
       displayParams: () => flights.getParams(),
       ...(resolveAsset ? { resolveAsset } : {}),
+      seaSurface,
     });
     const installations = createApplicationInstallations({
       surface,
@@ -146,7 +150,11 @@ export function createApplicationCatalog({
           ...(resolveAsset ? { resolveAsset } : {}),
         }),
         createApplicationEarthquakes({ source: sources.earthquakes }),
-        createApplicationAirQuality({ source: sources['air-quality'] }),
+        createApplicationAirQuality({
+          source: sources['air-quality'],
+          // Optional: a host's model field (src/layers/airQuality/field.js).
+          fieldSource: sources['air-quality-field'] ?? null,
+        }),
         createApplicationFirePerimeters({
           ...perimeterOptions,
           source: sources['fire-perimeters'],
